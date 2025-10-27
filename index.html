@@ -1,0 +1,102 @@
+<!DOCTYPE HTML><html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <style>
+    body {
+      min-width: 310px;
+      max-width: 800px;
+      height: 400px;
+      margin: 0 auto;
+    }
+    h2 {
+      font-family: Arial;
+      font-size: 2.5rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h2>ESP Accelerometer Station</h2>
+  <div id="chart-accel-x" class="container"></div>
+  <div id="chart-accel-y" class="container"></div>
+  <div id="chart-accel-z" class="container"></div>
+</body>
+
+<script>
+var myIP = "http://10.228.186.75";
+
+// ACCEL X
+var chartAX = new Highcharts.Chart({
+  chart:{ renderTo : 'chart-accel-x' },
+  title: { text: 'Acceleration X' },
+  series: [{ showInLegend: false, data: [] }],
+  plotOptions: { line: { animation: false, dataLabels: { enabled: true }},
+    series: { color: '#e63946' }},
+  xAxis: { type: 'datetime', dateTimeLabelFormats: { second: '%H:%M:%S' }},
+  yAxis: { title: { text: 'Accel X (g)' }},
+  credits: { enabled: false }
+});
+
+setInterval(() => {
+  fetch(myIP + "/ax")
+    .then(res => res.text())
+    .then(value => {
+      console.log(value)
+      var x = (new Date()).getTime();
+      var y = parseFloat(value);
+      chartAX.series[0].addPoint([x, y], true, chartAX.series[0].data.length > 40);
+    })
+    .catch(err => console.log(err));
+}, 300);
+
+
+// ACCEL Y
+var chartAY = new Highcharts.Chart({
+  chart:{ renderTo : 'chart-accel-y' },
+  title: { text: 'Acceleration Y' },
+  series: [{ showInLegend: false, data: [] }],
+  plotOptions: { line: { animation: false, dataLabels: { enabled: true }}},
+  xAxis: { type: 'datetime', dateTimeLabelFormats: { second: '%H:%M:%S' }},
+  yAxis: { title: { text: 'Accel Y (g)' }},
+  credits: { enabled: false }
+});
+
+setInterval(() => {
+  fetch(myIP + "/ay")
+    .then(res => res.text())
+    .then(value => {
+      var x = (new Date()).getTime();
+      var y = parseFloat(value);
+      chartAY.series[0].addPoint([x, y], true, chartAY.series[0].data.length > 40);
+    })
+    .catch(err => console.log(err));
+}, 300);
+
+
+// ACCEL Z
+var chartAZ = new Highcharts.Chart({
+  chart:{ renderTo : 'chart-accel-z' },
+  title: { text: 'Acceleration Z' },
+  series: [{ showInLegend: false, data: [] }],
+  plotOptions: { line: { animation: false, dataLabels: { enabled: true }},
+    series: { color: '#457b9d' }},
+  xAxis: { type: 'datetime', dateTimeLabelFormats: { second: '%H:%M:%S' }},
+  yAxis: { title: { text: 'Accel Z (g)' }},
+  credits: { enabled: false }
+});
+
+setInterval(() => {
+  fetch(myIP + "/az")
+    .then(res => res.text())
+    .then(value => {
+      var x = (new Date()).getTime();
+      var y = parseFloat(value);
+      chartAZ.series[0].addPoint([x, y], true, chartAZ.series[0].data.length > 40);
+    })
+    .catch(err => console.log(err));
+}, 300);
+
+</script>
+
+</html>
