@@ -1,10 +1,10 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
-
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <math.h>
 
 Adafruit_MPU6050 mpu;
 
@@ -12,70 +12,57 @@ Adafruit_MPU6050 mpu;
 const char* ssid = "Redmi c";     // Replace with your phone hotspot name
 const char* password = "1234567890";
 
-// Web Server on port 80
 AsyncWebServer server(80);
 
-String readAccelX() {
+String readTotalAccel() {
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
-  return String(a.acceleration.x);
-}
-
-String readAccelY() {
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
-  return String(a.acceleration.y);
-}
-
-String readAccelZ() {
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
-  return String(a.acceleration.z);
+  float total = sqrt(pow(a.acceleration.x, 2) +
+                     pow(a.acceleration.y, 2) +
+                     pow(a.acceleration.z, 2));
+  return String((total-10.7), 3); // round to 3 decimal places
 }
 
 void setup() {
   Serial.begin(115200);
 
-  if(!mpu.begin()){
+  if (!mpu.begin()) {
     Serial.println("Failed to find MPU6050. Check wiring!");
-    while(1);
+    while (1);
   }
 
   // Initialize FileSystem
-  if(!LittleFS.begin()){
+  if (!LittleFS.begin()) {
     Serial.println("LittleFS Mount Failed");
     return;
   }
 
   // Wi-Fi Connection
- WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
-  while(WiFi.status() != WL_CONNECTED){
+  while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");
   }
+  Serial.print("Connected! IP Address: ");
   Serial.println(WiFi.localIP());
 
-  // Web Routes
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest
-   *request){
-    request->send(LittleFS, "/index.html");
+  // Serve HTML page
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/index.html", "text/html");
   });
-  server.on("/ax", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/plain", readAccelX());
+
+  // Serve total acceleration
+  server.on("/accel", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", readTotalAccel());
   });
-  server.on("/ay", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/plain", readAccelY());
-  });
-  server.on("/az", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send(200, "text/plain", readAccelZ());
-  });
+
+  // CORS for browser
   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
-
   server.begin();
+  Serial.println("Server started!");
 }
 
-void loop(){
-}
+void loop() {}
