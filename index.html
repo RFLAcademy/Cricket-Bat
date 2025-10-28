@@ -1,4 +1,5 @@
-<!DOCTYPE HTML><html>
+<!DOCTYPE HTML>
+<html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://code.highcharts.com/highcharts.js"></script>
@@ -8,95 +9,155 @@
       max-width: 800px;
       height: 400px;
       margin: 0 auto;
+      text-align: center;
+      background: #000;
+      color: #00ff00;
     }
     h2 {
-      font-family: Arial;
-      font-size: 2.5rem;
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 2rem;
       text-align: center;
+      color: #00ff00;
+      text-shadow: 0 0 10px #00ff00;
+    }
+    button {
+      background-color: #00ff00;
+      color: #000;
+      border: none;
+      padding: 10px 20px;
+      font-size: 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 10px;
+      box-shadow: 0 0 10px #00ff00;
+      font-family: "Consolas", "Courier New", monospace;
+      transition: 0.3s;
+    }
+    button:hover {
+      background-color: #00cc00;
+      box-shadow: 0 0 20px #00ff00;
     }
   </style>
 </head>
 <body>
-  <h2>ESP Accelerometer Station</h2>
-  <div id="chart-accel-x" class="container"></div>
-  <div id="chart-accel-y" class="container"></div>
-  <div id="chart-accel-z" class="container"></div>
+  <h2>Smart Cricket Bat Acceleration Monitor</h2>
+  <div id="chart-accel" class="container" style="height: 400px; width: 100%;"></div>
+  <button id="saveBtn">Save Data</button>
+
+  <script>
+    window.onload = function() {
+      var myIP = "http://10.228.186.75"; // ✅ Your ESP32-C3 IP
+      var lastSmooth = null;
+      const alpha = 0.2; // smoothing factor
+
+      var chartAccel = new Highcharts.Chart({
+        chart: { 
+          renderTo: 'chart-accel',
+          zoomType: 'x',
+          animation: false,
+          backgroundColor: '#000'
+        },
+        title: { 
+          text: 'Overall Acceleration Magnitude (Raw vs Smoothed)',
+          style: { color: '#00ff00' }
+        },
+        series: [
+          { 
+            type: 'spline',
+            name: 'Raw Data',
+            showInLegend: true, 
+            data: [], 
+            color: '#00ff00',
+            lineWidth: 2
+          },
+          {
+            type: 'spline',
+            name: 'Smoothed',
+            showInLegend: true,
+            data: [],
+            color: '#00cc00',
+            lineWidth: 1,
+            dashStyle: 'ShortDash'
+          }
+        ],
+        plotOptions: { 
+          spline: { animation: false },
+          series: { turboThreshold: 0 }
+        },
+        xAxis: { 
+          type: 'datetime',
+          dateTimeLabelFormats: { second: '%H:%M:%S' },
+          labels: { style: { color: '#00ff00' } },
+          lineColor: '#00ff00',
+          tickColor: '#00ff00'
+        },
+        yAxis: { 
+          title: { 
+            useHTML: true,
+            text: 'Acceleration (m/s<sup>2</sup>)',
+            style: { color: '#00ff00' }
+          },
+          labels: { style: { color: '#00ff00' } },
+          gridLineColor: '#003300'
+        },
+        credits: { enabled: false },
+        tooltip: { enabled: false }
+      });
+
+      // Fetch new data every 100 ms
+      setInterval(() => {
+        fetch(myIP + "/accel")
+          .then(res => res.text())
+          .then(value => {
+            var x = new Date().getTime();
+            var rawY = parseFloat(value);
+            if (isNaN(rawY)) return;
+
+            // --- Exponential smoothing ---
+            if (lastSmooth === null) lastSmooth = rawY;
+            var smoothY = (alpha * rawY) + (1 - alpha) * lastSmooth;
+            lastSmooth = smoothY;
+
+            // --- Add both series points ---
+            var rawSeries = chartAccel.series[0];
+            var smoothSeries = chartAccel.series[1];
+
+            rawSeries.addPoint([x, rawY], true, rawSeries.data.length > 100);
+            smoothSeries.addPoint([x, smoothY], true, smoothSeries.data.length > 100);
+          })
+          .catch(err => console.log(err));
+      }, 100);
+
+      // Save current frame data
+      document.getElementById("saveBtn").addEventListener("click", function() {
+        var rawData = chartAccel.series[0].data;
+        var smoothData = chartAccel.series[1].data;
+
+        if (rawData.length === 0) {
+          alert("No data to save!");
+          return;
+        }
+
+        let csvContent = "data:text/csv;charset=utf-8,Time,Raw Accel (m/s^2),Smoothed Accel (m/s^2)\n";
+
+        for (let i = 0; i < rawData.length; i++) {
+          let time = new Date(rawData[i].x).toLocaleTimeString('en-GB');
+          let raw = rawData[i].y.toFixed(3);
+          let smooth = smoothData[i] ? smoothData[i].y.toFixed(3) : '';
+          csvContent += `${time},${raw},${smooth}\n`;
+        }
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "accel_frame_data.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        alert(" Data from current frame saved successfully!");
+      });
+    };
+  </script>
 </body>
-
-<script>
-var myIP = "http://10.228.186.75";
-
-// ACCEL X
-var chartAX = new Highcharts.Chart({
-  chart:{ renderTo : 'chart-accel-x' },
-  title: { text: 'Acceleration X' },
-  series: [{ showInLegend: false, data: [] }],
-  plotOptions: { line: { animation: false, dataLabels: { enabled: true }},
-    series: { color: '#e63946' }},
-  xAxis: { type: 'datetime', dateTimeLabelFormats: { second: '%H:%M:%S' }},
-  yAxis: { title: { text: 'Accel X (g)' }},
-  credits: { enabled: false }
-});
-
-setInterval(() => {
-  fetch(myIP + "/ax")
-    .then(res => res.text())
-    .then(value => {
-      console.log(value)
-      var x = (new Date()).getTime();
-      var y = parseFloat(value);
-      chartAX.series[0].addPoint([x, y], true, chartAX.series[0].data.length > 40);
-    })
-    .catch(err => console.log(err));
-}, 300);
-
-
-// ACCEL Y
-var chartAY = new Highcharts.Chart({
-  chart:{ renderTo : 'chart-accel-y' },
-  title: { text: 'Acceleration Y' },
-  series: [{ showInLegend: false, data: [] }],
-  plotOptions: { line: { animation: false, dataLabels: { enabled: true }}},
-  xAxis: { type: 'datetime', dateTimeLabelFormats: { second: '%H:%M:%S' }},
-  yAxis: { title: { text: 'Accel Y (g)' }},
-  credits: { enabled: false }
-});
-
-setInterval(() => {
-  fetch(myIP + "/ay")
-    .then(res => res.text())
-    .then(value => {
-      var x = (new Date()).getTime();
-      var y = parseFloat(value);
-      chartAY.series[0].addPoint([x, y], true, chartAY.series[0].data.length > 40);
-    })
-    .catch(err => console.log(err));
-}, 300);
-
-
-// ACCEL Z
-var chartAZ = new Highcharts.Chart({
-  chart:{ renderTo : 'chart-accel-z' },
-  title: { text: 'Acceleration Z' },
-  series: [{ showInLegend: false, data: [] }],
-  plotOptions: { line: { animation: false, dataLabels: { enabled: true }},
-    series: { color: '#457b9d' }},
-  xAxis: { type: 'datetime', dateTimeLabelFormats: { second: '%H:%M:%S' }},
-  yAxis: { title: { text: 'Accel Z (g)' }},
-  credits: { enabled: false }
-});
-
-setInterval(() => {
-  fetch(myIP + "/az")
-    .then(res => res.text())
-    .then(value => {
-      var x = (new Date()).getTime();
-      var y = parseFloat(value);
-      chartAZ.series[0].addPoint([x, y], true, chartAZ.series[0].data.length > 40);
-    })
-    .catch(err => console.log(err));
-}, 300);
-
-</script>
-
 </html>
