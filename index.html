@@ -1,0 +1,241 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <style>
+    body {
+      min-width: 310px;
+      max-width: 800px;
+      height: 400px;
+      margin: 0 auto;
+      text-align: center;
+      background: #000;
+      color: #00ff00;
+    }
+    h2 {
+      font-family: "Consolas", "Courier New", monospace;
+      font-size: 2rem;
+      text-align: center;
+      color: #00ff00;
+      text-shadow: 0 0 10px #00ff00;
+    }
+    button {
+      background-color: #00ff00;
+      color: #000;
+      border: none;
+      padding: 10px 20px;
+      font-size: 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 10px;
+      box-shadow: 0 0 10px #00ff00;
+      font-family: "Consolas", "Courier New", monospace;
+      transition: 0.3s;
+    }
+    button:hover {
+      background-color: #00cc00;
+      box-shadow: 0 0 20px #00ff00;
+    }
+    .legend {
+      margin-top: 6px;
+      margin-bottom: 25px; /* added space between legend and button */
+      font-family: "Consolas", monospace;
+      color: #00ff00;
+    }
+
+    .legend span {
+      display: inline-block;
+      margin: 0 10px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      border: 2px solid #777; /* outline for hollow style */
+      background: transparent; /* hollow background */
+      color: #797979;
+      transition: all 0.3s ease;
+    }
+
+    .legend span.active {
+      border-color: #00ff00; /* highlight border when active */
+      color: #00ff00;
+    }
+
+    /* Optional: glow when active */
+    .legend span.active.glow {
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    /* Ensure Highcharts legend symbols (top-left corner legend) are hollow too */
+    .highcharts-legend-item path {
+      fill: transparent !important;
+      stroke-width: 2px !important;
+    }
+  </style>
+</head>
+<body>
+  <h2>Smart Cricket Bat Acceleration Monitor</h2>
+  <div id="chart-accel" class="container" style="height: 400px; width: 100%;"></div>
+
+  <div class="legend" id="gripLegend">
+    <span id="legendNone">None</span>
+    <span id="legendLoose">Loose</span>
+    <span id="legendNormal">Normal</span>
+    <span id="legendTight">Tight</span>
+  </div>
+
+  <button id="saveBtn">Save Data</button>
+
+  <script>
+    window.onload = function() {
+      var myIP = "http://10.228.186.135"; // <-- update to your ESP32 IP
+      var lastSmooth = null;
+      const alpha = 0.2; // smoothing factor
+
+      var chartAccel = new Highcharts.Chart({
+        chart: { 
+          renderTo: 'chart-accel',
+          zoomType: 'x',
+          animation: false,
+          backgroundColor: '#000'
+        },
+        title: { 
+          text: 'Overall Acceleration Magnitude (Raw vs Smoothed)',
+          style: { color: '#00ff00' }
+        },
+        legend: {
+          itemStyle: {
+            color: '#FFFFFF',
+            fontFamily: 'Consolas, monospace',
+            fontSize: '14px'
+          }
+        },
+        series: [
+          { 
+            type: 'spline',
+            name: 'Raw Data',
+            showInLegend: true, 
+            data: [], 
+            color: '#fff',
+            lineWidth: 2
+          },
+          {
+            type: 'spline',
+            name: 'Smoothed (Grip Pressure)',
+            showInLegend: true,
+            data: [],
+            color: '#fff',
+            lineWidth: 3,
+            dashStyle: 'Dot'
+          }
+        ],
+        plotOptions: { 
+          spline: { animation: false },
+          series: { turboThreshold: 0 }
+        },
+        xAxis: { 
+          type: 'datetime',
+          dateTimeLabelFormats: { second: '%H:%M:%S' },
+          labels: { style: { color: '#00ff00' } },
+          lineColor: '#00ff00',
+          tickColor: '#00ff00'
+        },
+        yAxis: { 
+          title: { 
+            useHTML: true,
+            text: 'Acceleration (m/s<sup>2</sup>)',
+            style: { color: '#00ff00' }
+          },
+          labels: { style: { color: '#00ff00' } },
+          gridLineColor: '#003300'
+        },
+        credits: { enabled: false },
+        tooltip: { enabled: false }
+      });
+
+      function colorFromGrip(gripStr) {
+        if (!gripStr) return "#FFFFFF";
+        gripStr = gripStr.trim();
+        if (gripStr === "TIGHT") return "#FF0000";
+        if (gripStr === "NORMAL") return "#00FF00";
+        if (gripStr === "Loose") return "#FFFF00";
+        if (gripStr === "Null") return "#FFFFFF";
+        return "#FFFFFF";
+      }
+
+      function updateLegendHighlight(gripStr) {
+        const ids = ["None", "Loose", "Normal", "Tight"];
+        ids.forEach(id => {
+          document.getElementById("legend" + id).classList.remove("active", "glow");
+        });
+
+        if (gripStr === "Null") document.getElementById("legendNone").classList.add("active", "glow");
+        else if (gripStr === "Loose") document.getElementById("legendLoose").classList.add("active", "glow");
+        else if (gripStr === "NORMAL") document.getElementById("legendNormal").classList.add("active", "glow");
+        else if (gripStr === "TIGHT") document.getElementById("legendTight").classList.add("active", "glow");
+      }
+
+      setInterval(() => {
+        Promise.all([
+          fetch(myIP + "/accel").then(r => r.text()).catch(e => null),
+          fetch(myIP + "/grip").then(r => r.text()).catch(e => null)
+        ])
+        .then(([accelVal, gripVal]) => {
+          if (!accelVal) return;
+          var x = new Date().getTime();
+          var rawY = parseFloat(accelVal);
+          if (isNaN(rawY)) return;
+
+          if (lastSmooth === null) lastSmooth = rawY;
+          var smoothY = (alpha * rawY) + (1 - alpha) * lastSmooth;
+          lastSmooth = smoothY;
+
+          var rawSeries = chartAccel.series[0];
+          var smoothSeries = chartAccel.series[1];
+
+          rawSeries.addPoint([x, rawY], true, rawSeries.data.length > 200);
+          smoothSeries.addPoint([x, smoothY], true, smoothSeries.data.length > 200);
+
+          var gripState = gripVal ? gripVal.trim() : "Null";
+          var newColor = colorFromGrip(gripState);
+
+          rawSeries.update({ color: newColor }, false);
+          smoothSeries.update({ color: newColor }, false);
+          chartAccel.redraw();
+
+          updateLegendHighlight(gripState);
+        })
+        .catch(err => console.log("Fetch error:", err));
+      }, 200);
+
+      document.getElementById("saveBtn").addEventListener("click", function() {
+        var rawData = chartAccel.series[0].data;
+        var smoothData = chartAccel.series[1].data;
+
+        if (rawData.length === 0) {
+          alert("No data to save!");
+          return;
+        }
+
+        let csvContent = "data:text/csv;charset=utf-8,Time,Raw Accel (m/s^2),Smoothed Accel (m/s^2)\n";
+
+        for (let i = 0; i < rawData.length; i++) {
+          let time = new Date(rawData[i].x).toLocaleTimeString('en-GB');
+          let raw = rawData[i].y.toFixed(3);
+          let smooth = smoothData[i] ? smoothData[i].y.toFixed(3) : '';
+          csvContent += `${time},${raw},${smooth}\n`;
+        }
+
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "accel_frame_data.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        alert("Data from current frame saved successfully!");
+      });
+    };
+  </script>
+</body>
+</html>
