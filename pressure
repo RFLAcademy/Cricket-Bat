@@ -1,0 +1,70 @@
+const int numReadings = 10;
+
+// Arrays for three sensors
+int readings1[numReadings];
+int readings2[numReadings];
+int readings3[numReadings];
+
+int readIndex = 0;
+int total1 = 0, total2 = 0, total3 = 0;
+int average1 = 0, average2 = 0, average3 = 0;
+
+// Define input pins for three sensors
+int sensor1Pin = A0;
+int sensor2Pin = A1;
+int sensor3Pin = A2;
+
+void setup() {
+  Serial.begin(9600);
+
+  // Initialize arrays with 0
+  for (int i = 0; i < numReadings; i++) {
+    readings1[i] = 0;
+    readings2[i] = 0;
+    readings3[i] = 0;
+  }
+}
+
+void loop() {
+  // Remove oldest readings
+  total1 -= readings1[readIndex];
+  total2 -= readings2[readIndex];
+  total3 -= readings3[readIndex];
+
+  // Read new sensor values
+  readings1[readIndex] = analogRead(sensor1Pin);
+  readings2[readIndex] = analogRead(sensor2Pin);
+  readings3[readIndex] = analogRead(sensor3Pin);
+
+  // Add new readings
+  total1 += readings1[readIndex];
+  total2 += readings2[readIndex];
+  total3 += readings3[readIndex];
+
+  // Move to next index
+  readIndex++;
+  if (readIndex >= numReadings) readIndex = 0;
+
+  // Compute averages for each sensor
+  average1 = total1 / numReadings;
+  average2 = total2 / numReadings;
+  average3 = total3 / numReadings;
+
+  int overallAverage = (average1 + average2 + average3) / 3;
+
+  Serial.println(overallAverage);
+  if(overallAverage >1000){
+    Serial.println("TIGHT");
+  }
+  else if(overallAverage > 800){
+    Serial.println("NORMAL");
+  }
+  else if(overallAverage > 450){
+    Serial.println("Loose");
+  }
+  else {
+    Serial.println("Null");
+  }
+
+  delay(200);
+}
