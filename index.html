@@ -7,17 +7,14 @@
     body {
       min-width: 310px;
       max-width: 800px;
-      height: 400px;
       margin: 0 auto;
       text-align: center;
       background: #000;
       color: #00ff00;
+      font-family: "Consolas", monospace;
     }
     h2 {
-      font-family: "Consolas", "Courier New", monospace;
       font-size: 2rem;
-      text-align: center;
-      color: #00ff00;
       text-shadow: 0 0 10px #00ff00;
     }
     button {
@@ -28,9 +25,8 @@
       font-size: 1rem;
       border-radius: 8px;
       cursor: pointer;
-      margin-top: 10px;
+      margin: 10px;
       box-shadow: 0 0 10px #00ff00;
-      font-family: "Consolas", "Courier New", monospace;
       transition: 0.3s;
     }
     button:hover {
@@ -39,42 +35,45 @@
     }
     .legend {
       margin-top: 6px;
-      margin-bottom: 25px; /* added space between legend and button */
-      font-family: "Consolas", monospace;
+      margin-bottom: 25px;
       color: #00ff00;
     }
-
     .legend span {
       display: inline-block;
       margin: 0 10px;
       padding: 6px 12px;
       border-radius: 8px;
-      border: 2px solid #777; /* outline for hollow style */
-      background: transparent; /* hollow background */
+      border: 2px solid #777;
       color: #797979;
       transition: all 0.3s ease;
     }
-
     .legend span.active {
-      border-color: #00ff00; /* highlight border when active */
+      border-color: #00ff00;
       color: #00ff00;
-    }
-
-    /* Optional: glow when active */
-    .legend span.active.glow {
       box-shadow: 0 0 10px currentColor;
     }
-
-    /* Ensure Highcharts legend symbols (top-left corner legend) are hollow too */
-    .highcharts-legend-item path {
-      fill: transparent !important;
-      stroke-width: 2px !important;
+    .session-container {
+      margin: 20px auto;
+      border: 1px solid #00ff00;
+      padding: 10px;
+      border-radius: 10px;
+      width: 90%;
+      background: rgba(0, 20, 0, 0.4);
+      box-shadow: 0 0 15px #003300 inset;
+    }
+    select {
+      padding: 6px;
+      background: #000;
+      color: #00ff00;
+      border: 1px solid #00ff00;
+      border-radius: 6px;
+      font-family: "Consolas";
     }
   </style>
 </head>
 <body>
-  <h2>Smart Cricket Bat Acceleration Monitor</h2>
-  <div id="chart-accel" class="container" style="height: 400px; width: 100%;"></div>
+  <h2>Smart Cricket Bat Performance Monitor</h2>
+  <div id="chart-accel" style="height: 400px; width: 100%;"></div>
 
   <div class="legend" id="gripLegend">
     <span id="legendNone">None</span>
@@ -83,69 +82,38 @@
     <span id="legendTight">Tight</span>
   </div>
 
+  <div id="sessionStatus">Status: STOPPED</div>
+  <div id="sessionsArea"></div>
   <button id="saveBtn">Save Data</button>
 
   <script>
     window.onload = function() {
-      var myIP = "http://10.228.186.135"; // <-- update to your ESP32 IP
-      var lastSmooth = null;
-      const alpha = 0.2; // smoothing factor
+      const myIP = window.location.origin;
+      const alpha = 0.2;
+      let lastSmooth = null;
+      let currentState = "STOP";
+      let lastState = "STOP";
+      let currentSession = [];
+      let allSessions = [];
 
-      var chartAccel = new Highcharts.Chart({
-        chart: { 
-          renderTo: 'chart-accel',
-          zoomType: 'x',
-          animation: false,
-          backgroundColor: '#000'
-        },
-        title: { 
-          text: 'Overall Acceleration Magnitude (Raw vs Smoothed)',
-          style: { color: '#00ff00' }
-        },
-        legend: {
-          itemStyle: {
-            color: '#FFFFFF',
-            fontFamily: 'Consolas, monospace',
-            fontSize: '14px'
-          }
-        },
+      const chartAccel = new Highcharts.Chart({
+        chart: { renderTo: 'chart-accel', zoomType: 'x', animation: false, backgroundColor: '#000' },
+        title: { text: 'Overall Acceleration Magnitude (Raw vs Smoothed)', style: { color: '#00ff00' } },
+        legend: { itemStyle: { color: '#FFFFFF', fontFamily: 'Consolas, monospace' } },
         series: [
-          { 
-            type: 'spline',
-            name: 'Raw Data',
-            showInLegend: true, 
-            data: [], 
-            color: '#fff',
-            lineWidth: 2
-          },
-          {
-            type: 'spline',
-            name: 'Smoothed (Grip Pressure)',
-            showInLegend: true,
-            data: [],
-            color: '#fff',
-            lineWidth: 3,
-            dashStyle: 'Dot'
-          }
+          { name: 'Raw Data', type: 'spline', data: [], color: '#fff', lineWidth: 2 },
+          { name: 'Smoothed (Grip Pressure)', type: 'spline', data: [], color: '#fff', dashStyle: 'Dot', lineWidth: 3 }
         ],
-        plotOptions: { 
-          spline: { animation: false },
-          series: { turboThreshold: 0 }
-        },
+        // ✅ Axes colors updated
         xAxis: { 
           type: 'datetime',
-          dateTimeLabelFormats: { second: '%H:%M:%S' },
-          labels: { style: { color: '#00ff00' } },
+          labels: { style: { color: '#00ff00', fontWeight: 'bold' } },
           lineColor: '#00ff00',
           tickColor: '#00ff00'
         },
         yAxis: { 
-          title: { 
-            useHTML: true,
-            text: 'Acceleration (m/s<sup>2</sup>)',
-            style: { color: '#00ff00' }
-          },
-          labels: { style: { color: '#00ff00' } },
+          title: { text: 'Acceleration (m/s²)', style: { color: '#00ff00' } },
+          labels: { style: { color: '#00ff00', fontWeight: 'bold' } },  // <--- Y-axis label color here
           gridLineColor: '#003300'
         },
         credits: { enabled: false },
@@ -164,76 +132,99 @@
 
       function updateLegendHighlight(gripStr) {
         const ids = ["None", "Loose", "Normal", "Tight"];
-        ids.forEach(id => {
-          document.getElementById("legend" + id).classList.remove("active", "glow");
-        });
-
-        if (gripStr === "Null") document.getElementById("legendNone").classList.add("active", "glow");
-        else if (gripStr === "Loose") document.getElementById("legendLoose").classList.add("active", "glow");
-        else if (gripStr === "NORMAL") document.getElementById("legendNormal").classList.add("active", "glow");
-        else if (gripStr === "TIGHT") document.getElementById("legendTight").classList.add("active", "glow");
+        ids.forEach(id => document.getElementById("legend" + id).classList.remove("active"));
+        if (gripStr === "Null") document.getElementById("legendNone").classList.add("active");
+        else if (gripStr === "Loose") document.getElementById("legendLoose").classList.add("active");
+        else if (gripStr === "NORMAL") document.getElementById("legendNormal").classList.add("active");
+        else if (gripStr === "TIGHT") document.getElementById("legendTight").classList.add("active");
       }
 
-      setInterval(() => {
-        Promise.all([
-          fetch(myIP + "/accel").then(r => r.text()).catch(e => null),
-          fetch(myIP + "/grip").then(r => r.text()).catch(e => null)
-        ])
-        .then(([accelVal, gripVal]) => {
-          if (!accelVal) return;
-          var x = new Date().getTime();
-          var rawY = parseFloat(accelVal);
-          if (isNaN(rawY)) return;
+      function createSessionBox(sessionId) {
+        const div = document.createElement("div");
+        div.classList.add("session-container");
+        div.innerHTML = `
+          <h3>Session ${sessionId}</h3>
+          <label>Runs Scored:</label>
+          <select id="run${sessionId}">
+            <option value="0">0</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="6">6</option>
+          </select>
+        `;
+        document.getElementById("sessionsArea").appendChild(div);
+      }
 
+      setInterval(async () => {
+        try {
+          const [dataResp, stateResp] = await Promise.all([
+            fetch(myIP + "/data").then(r => r.text()),
+            fetch(myIP + "/state").then(r => r.text())
+          ]);
+
+          const [accelVal, gripVal] = dataResp.split(",");
+          const rawY = parseFloat(accelVal);
+          if (isNaN(rawY)) return;
+          const x = new Date().getTime();
           if (lastSmooth === null) lastSmooth = rawY;
-          var smoothY = (alpha * rawY) + (1 - alpha) * lastSmooth;
+          const smoothY = alpha * rawY + (1 - alpha) * lastSmooth;
           lastSmooth = smoothY;
 
-          var rawSeries = chartAccel.series[0];
-          var smoothSeries = chartAccel.series[1];
-
+          const rawSeries = chartAccel.series[0];
+          const smoothSeries = chartAccel.series[1];
           rawSeries.addPoint([x, rawY], true, rawSeries.data.length > 200);
           smoothSeries.addPoint([x, smoothY], true, smoothSeries.data.length > 200);
-
-          var gripState = gripVal ? gripVal.trim() : "Null";
-          var newColor = colorFromGrip(gripState);
-
+          const gripState = gripVal ? gripVal.trim() : "Null";
+          const newColor = colorFromGrip(gripState);
           rawSeries.update({ color: newColor }, false);
           smoothSeries.update({ color: newColor }, false);
           chartAccel.redraw();
-
           updateLegendHighlight(gripState);
-        })
-        .catch(err => console.log("Fetch error:", err));
-      }, 200);
 
-      document.getElementById("saveBtn").addEventListener("click", function() {
-        var rawData = chartAccel.series[0].data;
-        var smoothData = chartAccel.series[1].data;
+          currentState = stateResp.trim();
+          document.getElementById("sessionStatus").textContent = "Status: " + currentState;
 
-        if (rawData.length === 0) {
-          alert("No data to save!");
+          if (currentState === "START") {
+            currentSession.push({ time: x, raw: rawY, smooth: smoothY });
+          } else if (currentState === "STOP" && lastState === "START" && currentSession.length > 0) {
+            allSessions.push(currentSession);
+            createSessionBox(allSessions.length);
+            currentSession = [];
+          }
+          lastState = currentState;
+
+        } catch (err) {
+          console.log("Fetch error:", err);
+        }
+      }, 300);
+
+      document.getElementById("saveBtn").addEventListener("click", () => {
+        if (allSessions.length === 0) {
+          alert("No sessions recorded!");
           return;
         }
 
-        let csvContent = "data:text/csv;charset=utf-8,Time,Raw Accel (m/s^2),Smoothed Accel (m/s^2)\n";
+        let csv = "Session,Run,Time,Raw Accel (m/s^2),Smoothed Accel (m/s^2)\n";
+        allSessions.forEach((session, index) => {
+          const runValue = document.getElementById(`run${index + 1}`).value || "0";
+          session.forEach(p => {
+            csv += `${index + 1},${runValue},${new Date(p.time).toLocaleTimeString('en-GB')},${p.raw.toFixed(3)},${p.smooth.toFixed(3)}\n`;
+          });
+          csv += "\n";
+        });
 
-        for (let i = 0; i < rawData.length; i++) {
-          let time = new Date(rawData[i].x).toLocaleTimeString('en-GB');
-          let raw = rawData[i].y.toFixed(3);
-          let smooth = smoothData[i] ? smoothData[i].y.toFixed(3) : '';
-          csvContent += `${time},${raw},${smooth}\n`;
-        }
-
-        const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", "accel_frame_data.csv");
-        document.body.appendChild(link);
+        link.href = encodeURI("data:text/csv;charset=utf-8," + csv);
+        link.download = "bat_performance_data.csv";
         link.click();
-        document.body.removeChild(link);
 
-        alert("Data from current frame saved successfully!");
+        // 🧹 CLEAR ALL AFTER SAVE
+        allSessions = [];
+        currentSession = [];
+        document.getElementById("sessionsArea").innerHTML = "";
+        alert("Data saved and sessions cleared!");
       });
     };
   </script>
