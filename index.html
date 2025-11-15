@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <script src="https://code.highcharts.com/highcharts.js"></script>
+  <script src="/highcharts.js"></script>
   <style>
     body {
       min-width: 310px;
@@ -17,6 +17,14 @@
       font-size: 2rem;
       text-shadow: 0 0 10px #00ff00;
     }
+    #connStatus {
+      font-size: 1rem;
+      margin-bottom: 10px;
+      color: #ff3333;
+    }
+    .connected { color: #00ff00; text-shadow: 0 0 10px #00ff00; }
+    .disconnected { color: #ff3333; text-shadow: 0 0 10px #ff0000; }
+
     button {
       background-color: #00ff00;
       color: #000;
@@ -73,6 +81,7 @@
 </head>
 <body>
   <h2>Smart Cricket Bat Performance Monitor</h2>
+  <div id="connStatus" class="disconnected">🔴 Disconnected</div>
   <div id="chart-accel" style="height: 400px; width: 100%;"></div>
 
   <div class="legend" id="gripLegend">
@@ -88,13 +97,13 @@
 
   <script>
     window.onload = function() {
-      const myIP = window.location.origin;
       const alpha = 0.2;
       let lastSmooth = null;
       let currentState = "STOP";
       let lastState = "STOP";
       let currentSession = [];
       let allSessions = [];
+      let lastConnectionTime = 0;
 
       const chartAccel = new Highcharts.Chart({
         chart: { renderTo: 'chart-accel', zoomType: 'x', animation: false, backgroundColor: '#000' },
@@ -104,7 +113,6 @@
           { name: 'Raw Data', type: 'spline', data: [], color: '#fff', lineWidth: 2 },
           { name: 'Smoothed (Grip Pressure)', type: 'spline', data: [], color: '#fff', dashStyle: 'Dot', lineWidth: 3 }
         ],
-        // ✅ Axes colors updated
         xAxis: { 
           type: 'datetime',
           labels: { style: { color: '#00ff00', fontWeight: 'bold' } },
@@ -113,12 +121,14 @@
         },
         yAxis: { 
           title: { text: 'Acceleration (m/s²)', style: { color: '#00ff00' } },
-          labels: { style: { color: '#00ff00', fontWeight: 'bold' } },  // <--- Y-axis label color here
+          labels: { style: { color: '#00ff00', fontWeight: 'bold' } },
           gridLineColor: '#003300'
         },
         credits: { enabled: false },
         tooltip: { enabled: false }
       });
+
+      const connStatus = document.getElementById("connStatus");
 
       function colorFromGrip(gripStr) {
         if (!gripStr) return "#FFFFFF";
@@ -160,8 +170,8 @@
       setInterval(async () => {
         try {
           const [dataResp, stateResp] = await Promise.all([
-            fetch(myIP + "/data").then(r => r.text()),
-            fetch(myIP + "/state").then(r => r.text())
+            fetch("/data").then(r => r.text()),
+            fetch("/state").then(r => r.text())
           ]);
 
           const [accelVal, gripVal] = dataResp.split(",");
@@ -176,6 +186,7 @@
           const smoothSeries = chartAccel.series[1];
           rawSeries.addPoint([x, rawY], true, rawSeries.data.length > 200);
           smoothSeries.addPoint([x, smoothY], true, smoothSeries.data.length > 200);
+
           const gripState = gripVal ? gripVal.trim() : "Null";
           const newColor = colorFromGrip(gripState);
           rawSeries.update({ color: newColor }, false);
@@ -185,6 +196,11 @@
 
           currentState = stateResp.trim();
           document.getElementById("sessionStatus").textContent = "Status: " + currentState;
+
+          // 🟢 Update connection time
+          lastConnectionTime = Date.now();
+          connStatus.innerHTML = " Connected";
+          connStatus.className = "connected";
 
           if (currentState === "START") {
             currentSession.push({ time: x, raw: rawY, smooth: smoothY });
@@ -196,7 +212,11 @@
           lastState = currentState;
 
         } catch (err) {
-          console.log("Fetch error:", err);
+          // Connection lost
+          if (Date.now() - lastConnectionTime > 3000) {
+            connStatus.innerHTML = "🔴 Disconnected";
+            connStatus.className = "disconnected";
+          }
         }
       }, 300);
 
@@ -220,7 +240,6 @@
         link.download = "bat_performance_data.csv";
         link.click();
 
-        // 🧹 CLEAR ALL AFTER SAVE
         allSessions = [];
         currentSession = [];
         document.getElementById("sessionsArea").innerHTML = "";
